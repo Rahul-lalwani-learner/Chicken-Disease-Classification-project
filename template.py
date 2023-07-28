@@ -26,6 +26,7 @@ list_of_folders = [
     "requirements.txt", # all the dependencies will be here
     "setup.py", # this is the file which will be used to install the package
     "research/trails.ipnyb", # this is the file which will be used to do some research and other stuff
+    "templates/index.html"
 ]
 
 for filepath in list_of_folders: 
