@@ -105,3 +105,488 @@ setuptools.setup(
 )
 
 ```
+#### 1.4 Write all the required modules in requirements.txt
+
+All the neccessary modules name are written here for combine installation of the modules. 
+
+you will see why we have written name of these modules in this project as you go along with it
+
+```
+tensorflow
+pandas 
+dvc
+notebook
+numpy
+matplotlib
+seaborn
+python-box==6.0.2
+pyYAML
+tqdm
+ensure==1.0.2
+joblib
+types-pyYAML
+scipy
+Flask
+Flask-Cors
+ipykernel
+-e . 
+
+```
+**-e . it also present here which is not a module it will run setup.py file automatically to build package of you run requirements.txt file and setup.py will extract all the folder which has `__init__.py`**
+
+#### 1.5 Create new environment and install all the modules
+
+Here i will be using python version *3.8* for project, you can create a new virtual environment by writting (chicken is name of Environment)
+
+```
+conda create -n chicken python=3.8 -y
+```
+**Make sure you have miniconda or anaconda installed on your computer**
+
+
+After Creating this environment simply activate this
+
+```
+conda activate chicken
+```
+
+Now, you can simply install all the requirements
+
+```
+pip install -r requirements.txt
+```
+
+automatically install all the requirements fot his project
+
+🔑**Note** : Don't Forget to commit you source code time to time for proper management of code
+
+Now your step is complete go ahead to create logging to create logs for each process you perform
+
+Here i have not created Expection.py module for expection handling since i'll be using box-execption module using this you can also handle exceptions But if you you can write
+
+### 2. Logger and utils file
+
+#### 2.1 Logger - for logging our process
+
+Here we have created Logger inside `__init__.py` of src.cnnClassifier so that it will be easily acessible to file by using "from cnnClassifier import logger"
+
+In logging i have set stream out since i also want to print output of logging to the terminal (console)
+
+You can checkout this src.cnnClassifier.__init__.py file
+
+```
+import os
+import sys
+import logging
+
+logging_str = "[%(asctime)s: %(levelname)s: %(module)s] %(message)s"
+
+log_dir = "logs"
+log_filepath = os.path.join(log_dir, "running_logs.log")
+os.makedirs(log_dir, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO, 
+    format=logging_str,
+
+    handlers=[
+        logging.FileHandler(log_filepath),
+        logging.StreamHandler(sys.stdout) # print to console
+    ]
+
+)
+
+logger = logging.getLogger("cnnClassifierLogger")
+
+```
+
+We can check that logging is working properly in main.py file where i have print a simple Custom logging to console 
+
+This log will create a running_logs.log file in logs folder where we can check all of our logs and if something when wrong we can easily go through it. 
+
+#### 2.2 Creating utiliy functions
+
+I have created utility functions under common.py in utils folder *This are the functions that we are going to use frequently in this project* 
+
+Several methods inside utils are: 
+
+* read_yaml -> helps us read yaml file while CI/CD pipeline and github actions
+* Create_directory -> simply Create the directory at given path
+* save_json -> There results of the prediction w'll be saving in Json formate
+* Load_json -> To access those predictions and JSON file
+* Save_bin -> save binary files
+* load_bin -> Load binary files
+* get_size -> to get the size of particular file
+* decodeImage -> for decoding stringImage format to int
+* encodeImageIntoBase64 - encoding the binary image to base64
+
+```
+@ensure_annotations
+def read_yaml(path_to_yaml: Path) -> ConfigBox:
+    """
+    Reads a yaml file and returns a ConfigBox object
+    
+    Args: 
+        path_to_yaml (Path): Path to yaml file
+    Returns:
+        ConfigBox: ConfigBox object
+    Raises:
+        BoxValueError: If path_to_yaml does not exist
+        e: empty file
+    """
+    
+    try: 
+        with open(path_to_yaml, "r") as yaml_file:
+            yaml_dict = yaml.safe_load(yaml_file)
+            logger.info(f"yaml file: {path_to_yaml} loaded successfully")
+            return ConfigBox(yaml_dict)
+    except BoxValueError: 
+        logger.info("yaml file does not exist")
+        raise ValueError("yaml file does not exist")
+    except Exception as e:
+        logger.info(e)
+        raise e
+    
+
+@ensure_annotations
+def create_directories(path_to_directories: list, verbose=True): 
+    """
+    Create list of directories
+
+    Args:
+        path_to_directories (list): list of paths to directories
+        verbose (bool, optional): Defaults to True.
+    """
+
+    for path in path_to_directories: 
+        os.makedirs(path, exist_ok=True)
+        if verbose: 
+            logger.info(f"directory created at: {path}")
+
+@ensure_annotations
+def save_json(path: Path, data: dict): 
+    """
+    save json file
+
+    Args:
+        path (Path): path to json file
+        data (dict): dictionary to save
+    """
+    
+    with open(path, "w") as json_file: 
+        json.dump(data, json_file, indent=4)
+
+    logger.info(f"json file saved at: {path}")
+
+@ensure_annotations
+def load_json(path:Path) -> ConfigBox: 
+    """
+    load json file
+
+    Args:
+        path (Path): path to json file
+
+    Returns:
+        ConfigBox: ConfigBox object
+    """
+    
+    with open(path, "r") as json_file: 
+        data = json.load(json_file)
+
+    logger.info(f"json file loaded from: {path}")
+    return ConfigBox(data)
+
+
+@ensure_annotations
+def save_bin(data:Any, path: Path): 
+    """
+    save binary file
+
+    Args:
+        data (Any): data to save
+        path (Path): path to save
+    """
+    
+    joblib.dump(value = data,filename =  path)
+
+    logger.info(f"binary file saved at: {path}")
+
+@ensure_annotations
+def load_bin(path: Path) -> Any:
+    """
+    load binary file
+
+    Args:
+        path (Path): path to load
+
+    Returns:
+        Any: data
+    """
+    
+    data = joblib.load(filename = path)
+
+    logger.info(f"binary file loaded from: {path}")
+    return data
+
+@ensure_annotations
+def get_size(path:Path) -> str: 
+    """
+    get size of file in KB
+
+    Args:
+        path (Path): path to file
+
+    Returns:
+        str: size of file
+    """
+    
+    size_in_kb = round(os.path.getsize(path)/1024)
+    return size_in_kb
+
+def decodeImage(imgstring, filename): 
+    imgdata = base64.b64decode(imgstring)
+    with open(filename, 'wb') as f:
+        f.write(imgdata)
+        f.close()
+
+def encodeImageIntoBase64(image_path): 
+    with open(image_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read())
+        return encoded_string
+
+```
+
+Testing of this function and questions like why configbox is used instead of dictionary and what ensure_annotation decorator does are resolved in [research/trail.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/trails.ipynb) File. Do check it out
+
+## 3. Project workFlows
+
+1. Update config.yaml 
+> All filepaths related things of dataingestion and other pipelines are written here 
+2. Update secrets.yaml [Optional]
+> If you have some ceredentials or some secret information you can write it in secrets.yaml
+3. Update params.yaml
+> During model Configuration i'll we updating this params
+4. Update the Entity
+> It is the return type of the function (if you don't have any inbuilt return type you can create your custom return type)
+5. Update the configuration manger in src config
+> This will help us properly connect yaml file and read content from them 
+6. Update the components
+> Writing different components like data ingestion data prediction
+7. Update the pipeline
+> Creating prediction pipelines and training pipelines
+8. Update the main.py
+> After writing code modulary udpate main.py for CI/CD implementation 
+9. Update the dvc.yaml
+> for pipeline tracking
+
+### 3.1 Data Ingestion 
+
+**Firstly we will perform this on *01_data_ingestion.ipynb* in research folder so that we all configer that everything is running properly then we will upgrade it to modular programing fashion**
+
+Go through workflow to properly do it
+
+#### 3.1.1 udpate config.yaml
+
+for data ingestion we will store all the links and path of data and folders inside this data is stored inside this folder
+
+you can look as the code
+
+```
+artifacts_root: artifacts
+
+
+data_ingestion:
+  root_dir: artifacts/data_ingestion
+  source_URL: https://github.com/entbappy/Branching-tutorial/raw/master/Chicken-fecal-images.zip
+  local_data_file: artifacts/data_ingestion/data.zip
+  unzip_dir: artifacts/data_ingestion
+
+```
+
+This yaml file will be read as ConfigBox format mean somewhat looks like dictionary format for more convenience 
+*means we can use this as variables inside different files some what like global variables for paths*
+
+#### 3.1.2 update Entity (Create the new Datatype for Storing filepaths)
+
+we can skip updating params.yaml and secrets.yaml for now since this we are working in testing phase
+
+Here New entity we required is DataIngestionconfig will have attributes same as config.yaml file
+
+```
+from dataclasses import dataclass
+from pathlib import Path
+
+@dataclass(frozen=True)
+class DataIngestionConfig: 
+    root_dir : Path
+    source_URL : str
+    local_data_file : Path
+    unzip_dir: Path
+
+```
+#### 3.1.3 Update Configmanger in src.config and updating constants
+This is going to extract all the data from yaml file and return us as a ConfigBox format which we can use in our next step for components.dataingestion before this we also have to update the constants.__init__.py inside src which will hold the path of Config.yaml and params.yaml
+
+```
+from pathlib import Path
+
+CONFIG_FILE_PATH = Path("config/config.yaml")
+PARAMS_FILE_PATH = Path("params.yaml")
+```
+
+Now we can import constants form cnnClassifier and use them  
+```
+from cnnClassifier.constants import * 
+from cnnClassifier.utils.common import read_yaml, create_directories
+
+class ConfigurationManager: 
+    def __init__(
+            self, 
+            config_filepath = CONFIG_FILE_PATH,
+            params_filepath = PARAMS_FILE_PATH
+    ): 
+        self.config = read_yaml(config_filepath)
+        self.params = read_yaml(params_filepath)
+
+        create_directories([self.config.artifacts_root])
+
+    def get_data_ingestion_config(self) -> DataIngestionConfig: 
+        config = self.config.data_ingestion
+
+        create_directories([config.root_dir])
+
+        data_ingestion_config = DataIngestionConfig(
+            root_dir = config.root_dir,
+            source_URL = config.source_URL,
+            local_data_file=config.local_data_file,
+            unzip_dir=config.unzip_dir,
+        )
+
+        return data_ingestion_config
+
+```
+
+#### 3.1.4 Update the components (Data Ingsetion)
+While modular programing we will be Creating a file inside Componetns for data ingestion Load all the data and extraction it to artifacts folder 
+
+```
+import os
+import urllib.request as request
+import zipfile
+from cnnClassifier.utils.common import get_size
+from cnnClassifier import logger
+
+class DataIngestion: 
+    def __init__(self, config: DataIngestionConfig): 
+        self.config = config
+
+    def download_file(self): 
+        if not os.path.exists(self.config.local_data_file): 
+            filename, headers = request.urlretrieve(
+                url = self.config.source_URL, 
+                filename = self.config.local_data_file
+            )
+            logger.info(f"File downloaded at: {filename} with following headers: {headers}")
+        else: 
+            logger.info(f"File already exists of size: {get_size(Path(self.config.local_data_file))}")
+        
+    
+    def extract_zip_file(self): 
+        unzip_path = self.config.unzip_dir
+        os.makedirs(unzip_path, exist_ok=True)
+        with zipfile.ZipFile(self.config.local_data_file, 'r') as zip_ref:
+            zip_ref.extractall(unzip_path)
+
+```
+Here we have downloaded data from url using `urllib.request.urlretrieve(url, filename)` and after that created a function that will extraction it to local storages as <local_data_file> name
+
+Now you can run this code under a try except statement to check does everything is running properly
+
+```
+try: 
+    config = ConfigurationManager()
+    data_ingestion_config = config.get_data_ingestion_config()
+    data_ingestion = DataIngestion(data_ingestion_config)
+    data_ingestion.download_file()
+    data_ingestion.extract_zip_file()
+except Exception as e: 
+    raise e
+```
+
+In theory this should download our data and extract it to local storage you can check it in your file explorer.
+
+#### 3.1.5 converting to Modular programing approach
+
+You just have to follow all the steps one by one that are mentioned above 
+let me write them for you
+
+1. update config.yaml (that if already updated)
+2. update params.yaml and secrets.yaml (for now you can skip them)
+3. update entity 
+Inside entity create a file named config_entity and paste the code where you have created the DataIngestionConfig entity
+4. Update configurationManger in src.config.configuration.py 
+paste the code of `ConfigurationManager` class
+5. update the components
+Inside components create the data_ingestion.py
+
+copy the dataIngestion class code and paste it here
+
+Here is all your code converted to Modular approach
+
+#### 3.1.6 Update Pipeline
+Create `stage_01_data_ingestion.py` inside pipeline folder Here we will be importing DataIngestion from Components and Create class to run them 
+
+```
+from cnnClassifier.config.configuration import ConfigurationManager
+from cnnClassifier.components.data_ingestion import DataIngestion
+from cnnClassifier import logger
+
+STAGE_NAME = "Data Ingestion Stage"
+
+class DataIngestionTrainingPipeline: 
+    def __init__(self): 
+        pass
+
+    def main(self): 
+        config = ConfigurationManager()
+        data_ingestion_config = config.get_data_ingestion_config()
+        data_ingestion = DataIngestion(data_ingestion_config)
+        data_ingestion.download_file()
+        data_ingestion.extract_zip_file()
+
+
+if __name__ == "__main__":
+    try: 
+        logger.info(">>> Stage {} started <<<".format(STAGE_NAME))
+        obj = DataIngestionTrainingPipeline()
+        obj.main()
+        logger.info(">>> Stage {} completed <<<\n\n X===========X".format(STAGE_NAME))
+    
+    except Exception as e:
+        logger.exception(e)
+        raise e
+```
+
+#### 3.1.7 Update the main.py 
+
+until we are not using DVC w'll be using main.py to run pipelines and components
+
+Here is the simple Code to run DataIngestionTrainingPipeline
+
+```
+from cnnClassifier import logger
+from cnnClassifier.pipeline.stage_01_data_ingestion import DataIngestionTrainingPipeline
+
+STAGE_NAME = "Data Ingestion Stage"
+try: 
+    logger.info(">>> Stage {} started <<<".format(STAGE_NAME))
+    obj = DataIngestionTrainingPipeline()
+    obj.main()
+    logger.info(">>> Stage {} completed <<<\n\n X===========X".format(STAGE_NAME))
+
+except Exception as e:
+    logger.exception(e)
+    raise e
+```
+
+✅ **Data Ingestion Completed**

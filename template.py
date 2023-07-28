@@ -25,7 +25,7 @@ list_of_folders = [
     "params.yaml",
     "requirements.txt", # all the dependencies will be here
     "setup.py", # this is the file which will be used to install the package
-    "research/trails.ipnyb", # this is the file which will be used to do some research and other stuff
+    "research/trails.ipynb", # this is the file which will be used to do some research and other stuff
     "templates/index.html"
 ]
 
