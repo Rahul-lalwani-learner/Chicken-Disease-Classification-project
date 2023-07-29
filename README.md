@@ -590,3 +590,189 @@ except Exception as e:
 ```
 
 ✅ **Data Ingestion Completed**
+
+### 4. Prepare Base model 
+
+Firstly we will perform our experiments in [research/02_prepare_base_model.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/02_prepare_base_model.ipynb)
+
+Firstly for model prepration we have update the config.yaml file
+#### 4.1 update config.yaml
+it include all the neccessary file paths for base models and updated model to save
+
+```
+prepare_base_model: 
+  root_dir: artifacts/prepare_base_model
+  base_model_path: artifacts/prepare_base_model/base_model.h5
+  updated_base_model_path: artifacts/prepare_base_model/base_model_udpated.h5
+```
+
+🔑**Note**: The base model here is VGG16 from tf.keras.application and updated model is the model with changed top and output layer
+
+#### 4.2 Update params.yaml
+In params.yaml i will give all the parameters related to model this are going to work as global parameter that i can use in any file and update Globally
+
+```
+AUGMENTATION: True
+IMAGE_SIZE: [224,224,3] # as per the VGG 16 model 
+BATCH_SIZE: 16
+INCLUDE_TOP: False
+EPOCHS: 1
+CLASSES: 2
+WEIGHTS: imagenet
+LEARNING_RATE: 0.01
+```
+
+#### 4.3 Update Entity
+I have created a new entity inside config_entity.py for prepare base model stage Where it will be mix of params.yaml and config.yaml 
+```
+@dataclass(frozen=True)
+class PrepareBaseModelConfig: 
+    root_dir : Path
+    base_model_path : Path
+    updated_base_model_path : Path
+    params_image_size : list
+    params_learning_rate : float
+    params_include_top : bool
+    params_weights : str
+    params_classes: int
+```
+
+#### 4.4 Update configuration Manger
+Here in configuration manager i have to Create a methods that will help read the yaml files (grab data from them) and return to Components as `ConfigBox`
+
+```
+    def get_prepare_base_model_config(self) -> PrepareBaseModelConfig: 
+        config  = self.config.prepare_base_model
+
+        create_directories([config.root_dir])
+
+        prepare_base_model_config = PrepareBaseModelConfig(
+            root_dir=Path(config.root_dir),
+            base_model_path=Path(config.base_model_path),
+            updated_base_model_path=Path(config.updated_base_model_path),
+            params_image_size=self.params.IMAGE_SIZE,
+            params_learning_rate=self.params.LEARNING_RATE,
+            params_include_top=self.params.INCLUDE_TOP,
+            params_weights=self.params.WEIGHTS,
+            params_classes=self.params.CLASSES,
+        )
+
+        return prepare_base_model_config
+```
+
+*As you have seen earlier that constructor of this Configuration Manager read the data form yaml files and create root directories*
+
+#### 4.5 Create new Component prepare_base_model.py
+
+Here we will create a new Class PrepareBaseModel which will have 3 methods
+
+1. `get_base_model` - This method is going to load VGG16 model from keras.application on imagenet weights and also saves it in H5 format
+2. `_prepare_full_model` - This methods is going to help in Updating our model by adding extra flatten and Dense layer to the end of the VGG16 model
+3. `Update_base_model` - This function will finally update the basemodel with extra layer and save it in H5 format inside artifacts folder
+
+```
+mport os
+import urllib.request as request
+from zipfile import ZipFile
+import tensorflow as tf
+from pathlib import Path
+from cnnClassifier.entity.config_entity import PrepareBaseModelConfig
+from cnnClassifier import logger
+
+class PrepareBaseModel: 
+    def __init__(self, config: PrepareBaseModelConfig):
+        self.config = config
+    
+    def get_base_model(self): 
+        self.model = tf.keras.applications.vgg16.VGG16(
+            input_shape=self.config.params_image_size, 
+            weights=self.config.params_weights,
+            include_top=self.config.params_include_top
+        )
+
+        logger.info('Base model loaded successfully')
+        self.save_model(path=self.config.base_model_path, model=self.model)
+    
+
+    @staticmethod
+    def  _prepare_full_model(model, classes, freeze_all, freeze_till, learning_rate): 
+        if freeze_all: 
+            for layer in model.layers: 
+                model.trainable = False
+        elif (freeze_till is not None) and (freeze_till > 0): 
+            for layer in model.layers[:-freeze_till]: 
+                model.trainable = False
+
+        flatten_layer = tf.keras.layers.Flatten()(model.output)
+        prediction = tf.keras.layers.Dense(units=classes, activation='softmax')(flatten_layer)
+
+        full_model = tf.keras.models.Model(inputs=model.input, outputs=prediction)
+
+        full_model.compile(
+            optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate),
+            loss = tf.keras.losses.CategoricalCrossentropy(), 
+            metrics = ['accuracy']
+        )
+
+        logger.info("Full model Compiled successfully")
+        full_model.summary()
+
+        return full_model
+    
+    def update_base_model(self): 
+        self.full_model = self._prepare_full_model(
+            model=self.model,
+            classes=self.config.params_classes,
+            freeze_all=True, 
+            freeze_till=None,
+            learning_rate=self.config.params_learning_rate
+        )
+
+        self.save_model(path=self.config.updated_base_model_path, model=self.full_model)
+        logger.info("Updated base model saved successfully")
+
+    @staticmethod
+    def save_model(path: Path, model: tf.keras.Model):
+        model.save(path)
+```
+
+#### 4.6 Create new pipeline to prepare base model
+
+Similar to Data ingestion pipeline this will call call the methods from components and Configuration manger to Create new Class `PrepareBaseModelTrainingPipeline`
+
+```
+from cnnClassifier.config.configuration import ConfigurationManager
+from cnnClassifier.components.prepare_base_model import PrepareBaseModel
+from cnnClassifier import logger
+
+STAGE_NAME = 'prepare base model'
+
+class PrepareBaseModelTrainingPipeline:
+    def __init__(self): 
+        pass
+
+    def main(self): 
+        config = ConfigurationManager()
+        prepare_base_model_config = config.get_prepare_base_model_config()
+        prepare_base_model = PrepareBaseModel(config=prepare_base_model_config)
+        prepare_base_model.get_base_model()
+        prepare_base_model.update_base_model()
+```
+
+#### 4.7 update main.py 
+Now finally Append new lines of code to main.py to Check whether everything is working properly or not after this a new folder will be created in artifacts and both base model and updated model are also going to be present their.
+
+```
+STAGE_NAME = "Prepare Base Model Stage"
+try: 
+    logger.info("************************")
+    logger.info(f">>>>>>>>> Running stage: {STAGE_NAME} started <<<<<<<<<<")
+    obj = PrepareBaseModelTrainingPipeline()
+    obj.main()
+    logger.info(f">>>>>>> stage: {STAGE_NAME} completed <<<<<<<<<\n\nX================X")
+except Exception as e:
+    logger.error(f"Error while running stage: {STAGE_NAME} - Error message: {e}")
+    raise e
+```
+
+✅ **Preparing Base Model Completed**
