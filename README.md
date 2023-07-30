@@ -1193,3 +1193,137 @@ except Exception as e:
 Do Check out [research/05_model_evaluation.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/05_model_evaluation.ipynb)
 
 ## `With that our Training Pipeline is also Completed`
+
+## Writing Prediction Pipeline and DVC (Pipeline tracking)
+
+So you might we thinking what is DVC and what is the need of it. 
+
+**DVC** (*Data Version Control*) - DVC is a free, open-source tool for data management, ML pipeline automation and Experiment Management 
+
+This mean DVC can we used in many way but here we are going to use it as Pipeline management system and Pipeline Tracking tool
+
+So what exactly Pipeline tracking means 
+*it is like you know if we have to run our code and test the code we have to update the main.py file and run that file but when we run main.py file the runs all of the pipelines like if model_preparation is done it will still do that and that will waste lots of our time, to save time we can use something that will check which pipeline it have to run and run exactly that one for better performance and Efficently*
+
+### Update the DVC File
+writing dvc code is every similar to code in yaml file "well what more you can expect from a file named as dvc.yaml" so let's start writing the DVC Code
+
+if you want to learn more about DVC you can go to its website [link](https://dvc.org/)
+
+🔑**One important thing to keep in mind is DVC runs on top of git to always use git with DVC**
+
+Let's break it down in step: 
+
+1. Update DVC.yaml
+Here i'll write all dvc commands (simple i'll write about All stages in order so that i can run all of them in order)
+
+Here is code 
+```
+stages: 
+  data_ingestion:
+    cmd: python src/cnnClassifier/pipeline/stage_01_data_ingestion.py
+    deps: 
+      - src/cnnClassifier/pipeline/stage_01_data_ingestion.py
+      - config/config.yaml
+    outs: 
+      - artifacts/data_ingestion/Chicken-fecal-images
+
+    
+  prepare_base_model: 
+    cmd: python src/cnnClassifier/pipeline/stage_02_prepare_base_model.py
+    deps: 
+      - src/cnnClassifier/pipeline/stage_02_prepare_base_model.py
+      - config/config.yaml
+    params: 
+      - IMAGE_SIZE
+      - INCLUDE_TOP
+      - CLASSES
+      - WEIGHTS
+      - LEARNING_RATE
+    outs: 
+      - artifacts/prepare_base_model
+
+  training: 
+    cmd: python src/cnnClassifier/pipeline/stage_03_training.py
+    deps: 
+      - src/cnnClassifier/pipeline/stage_03_training.py
+      - config/config.yaml
+      - src/cnnClassifier/components/prepare_callbacks.py
+      - artifacts/data_ingestion/Chicken-fecal-images
+      - artifacts/prepare_base_model
+    params: 
+      - IMAGE_SIZE
+      - EPOCHS
+      - BATCH_SIZE
+      - AUGMENTATION
+    outs: 
+      - artifacts/training/model.h5
+
+  evaluation:
+    cmd: python src/cnnClassifier/pipeline/stage_04_evaluation.py
+    deps: 
+      - src/cnnClassifier/pipeline/stage_04_evaluation.py
+      - config/config.yaml
+      - artifacts/data_ingestion/Chicken-fecal-images
+      - artifacts/training/model.h5
+    params:
+      - IMAGE_SIZE
+      - BATCH_SIZE
+    metrics: 
+      - scores.json: 
+          cache: false
+
+```
+
+If you look at this code you'll easily be able to understand what is happing but for help here are some tips
+
+* cmd - Command to be execute
+* deps - Dependencies for command
+* params - all the parameter used from params.yaml
+* metrics - resulted metrics from command
+* outs - Expected output of the command
+
+*After updating the file you have to open the command prompt in same environment and then have to Initialize the DVC*
+
+```
+dvc init
+```
+This command will initialize the DVC for you project and also create some files in your directory `.dvc` folder and `.dvcignore` file
+
+After this you can write 
+```
+dvc repro
+```
+
+To execute all the statements in order as you mentioned The interesting thing is here if all the outputs are present already and there are no changes in files then this will skip all the pipeline to save time
+
+```
+Stage 'data_ingestion' didn't change, skipping
+Stage 'prepare_base_model' didn't change, skipping
+Stage 'training' didn't change, skipping
+Stage 'evaluation' didn't change, skipping
+Data and pipelines are up to date.
+
+```
+
+you can also see the dependencies of Pipelines through `dvc dag` and it is a very interesting way to visualize the dependencies
+
+```
++----------------+            +--------------------+
+| data_ingestion |            | prepare_base_model |
++----------------+*****       +--------------------+
+         *             *****             *
+         *                  ******       *
+         *                        ***    *
+         **                        +----------+
+           **                      | training |
+             ***                   +----------+
+                ***             ***
+                   **         **
+                     **     **
+                  +------------+
+                  | evaluation |
+                  +------------+
+```
+
+✅**DVC pipeline tracking completed** Now you can push your code 
