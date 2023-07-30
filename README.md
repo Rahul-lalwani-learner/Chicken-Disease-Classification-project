@@ -862,6 +862,198 @@ class PrepareCallback:
         ]
 ```
 
-🔑**Till here Prepare Model callbacks is Completed**
+✅**Till here Prepare Model callbacks is Completed**
 You can check all this in [research/03_prepare_callbacks.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/03_prepare_callbacks.ipynb) To check whether how this all is going to create new directory in artifacts folder
 
+### 6. Training the model 
+Wow!! Excited we have reached to the stage of Model training Now you can see everything you have done earlier in working stage
+
+Here also we will follow the same Workfloww mean first we have to Update the config.yaml and also we don't have to worry about params.yaml and Secret.yaml since they both are already updated
+
+#### 6.1 Update the Config.yaml
+This time we don't have to do much in it just training path and updated model path
+
+```
+training: 
+  root_dir: artifacts/training
+  trained_model_path: artifacts/training/model.h5
+```
+
+#### 6.2 Update the Entity/config_entity.py
+Here again w'll create new entity that will hold the content from both config.yaml and params.yaml according to requirements of training configuration manager
+
+```
+@dataclass(frozen=True)
+class TrainingConfig: 
+    root_dir: Path
+    trained_model_path: Path
+    updated_base_model_path: Path
+    training_data: Path
+    params_epochs: int
+    params_batch_size: int
+    params_is_augmentation: bool
+    params_image_size: list
+```
+
+#### 6.3 Update Configuration Manager in Configuration.py
+
+Here i haved added a new components that will Extract information from config.yaml and params.yaml and return all this information in TrainingConfig format
+
+```
+    def get_training_config(self) -> TrainingConfig: 
+        training = self.config.training
+        prepare_base_model = self.config.prepare_base_model
+        params = self.params
+        training_data = os.path.join(self.config.data_ingestion.unzip_dir, "Chicken-fecal-images")
+        create_directories([Path(training.root_dir)])
+
+        training_config = TrainingConfig(
+            root_dir = Path(training.root_dir), 
+            trained_model_path = Path(training.trained_model_path),
+            updated_base_model_path=Path(prepare_base_model.updated_base_model_path),
+            training_data = Path(training_data),
+            params_epochs=params.EPOCHS,
+            params_batch_size=params.BATCH_SIZE,
+            params_is_augmentation=params.AUGMENTATION,
+            params_image_size=params.IMAGE_SIZE,
+        )
+
+        return training_config
+```
+
+#### 6.4 Create new Components
+Create new trainig Components that will have the functions to load updated base model, training the model and saving the model that will be used in pipeline
+
+**train_valid_generator** is an interesting function this will perform and DataAugmentation and also do Data rescale while simulaneously Loading the Data from training directories in Artifacts
+
+```
+class Training: 
+    def __init__(self, config: TrainingConfig): 
+        self.config = config
+    
+    def get_base_model(self): 
+        self.model = tf.keras.models.load_model(
+            self.config.updated_base_model_path
+        )
+
+    def train_valid_generator(self): 
+        
+        datagenerator_kawrgs = dict(
+            rescale = 1./255,
+            validation_split = 0.20
+        )
+
+        dataflow_kwargs = dict(
+            target_size = self.config.params_image_size[:-1],
+            batch_size = self.config.params_batch_size,
+            interpolation = "bilinear"
+        )
+
+        valid_datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+            **datagenerator_kawrgs
+        )
+
+        self.valid_generator = valid_datagen.flow_from_directory(
+            directory=self.config.training_data,
+            subset="validation",
+            shuffle=False, 
+            **dataflow_kwargs
+        )
+
+        if self.config.params_is_augmentation: 
+            train_datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+                rotation_range=40,
+                horizontal_flip=True,
+                width_shift_range=0.2, 
+                height_shift_range=0.2,
+                shear_range=0.2,
+                zoom_range=0.2,
+                **datagenerator_kawrgs
+            )
+        else: 
+            train_datagen = valid_datagen
+
+        self.train_generator = train_datagen.flow_from_directory(
+            directory=self.config.training_data,
+            subset="training",
+            shuffle=True,
+            **dataflow_kwargs
+        )
+    
+    @staticmethod
+    def save_model(path: Path, model: tf.keras.Model): 
+        model.save(path)
+
+    def train(self, callback_list: list): 
+        self.steps_per_epoch = self.train_generator.samples // self.train_generator.batch_size
+        self.validation_steps = self.valid_generator.samples // self.valid_generator.batch_size
+
+        self.history = self.model.fit(
+            self.train_generator, 
+            epochs=self.config.params_epochs,
+            steps_per_epoch=self.steps_per_epoch,
+            validation_data=self.valid_generator,
+            validation_steps = self.validation_steps,
+            callbacks = callback_list
+        )
+
+        self.save_model(
+            path=self.config.trained_model_path,
+            model = self.model
+        )
+```
+
+#### 6.5 Create new pipeline
+Now i have created a new Pipeline that will properly Use training and Callbacks components and basically trains the model and saves it
+
+```
+class ModelTrainingPipeline: 
+    def __init__(self): 
+        pass
+
+    def main(self): 
+        config = ConfigurationManager()
+        prepare_callbacks_config = config.get_prepare_callback_config()
+        prepare_callbacks = PrepareCallback(config=prepare_callbacks_config)
+        callback_list = prepare_callbacks.get_tb_ckpt_callbacks()
+
+        training_config = config.get_training_config()
+        training = Training(config=training_config)
+        training.get_base_model()
+        training.train_valid_generator()
+        training.train(callback_list = callback_list)
+
+if __name__ == "__main__": 
+    try: 
+        logger.info(f"***********************")
+        logger.info(f">>>>>>>>>>>> {STAGE_NAME} started <<<<<<<<<<<")
+        obj = ModelTrainingPipeline()
+        obj.main()
+        logger.info(f">>>>>>>>>>>> Stage {STAGE_NAME} completed <<<<<<<<<<<")
+    except Exception as e: 
+        logger.exception(f"Error in {STAGE_NAME} pipeline: {e}")
+        raise e
+```
+
+#### 6.6 Update the main.py
+Now you see all this in action by updating main.py and running TrainingPipeline
+
+```
+STAGE_NAME = "Training Stage"
+try: 
+    logger.info(f"***********************")
+    logger.info(f">>>>>>>>>>>> {STAGE_NAME} started <<<<<<<<<<<")
+    obj = ModelTrainingPipeline()
+    obj.main()
+    logger.info(f">>>>>>>>>>>> {STAGE_NAME} completed <<<<<<<<<<<")
+except Exception as e: 
+    logger.exception(f"Error in {STAGE_NAME} pipeline: {e}")
+    raise e
+```
+
+🔑**Note**: Here are some thing you have to remember 
+
+1. You can do check logs at any time if you find any trouble in execution 
+2. You can also check all of this in [research/04_training.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/03_training.ipynb) to see everything thing under one shed
+
+✅ **Model Training Stage Completed** Finally the model training is done now w'll go ahead with model evaluation part
