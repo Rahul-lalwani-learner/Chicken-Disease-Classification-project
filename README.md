@@ -1054,6 +1054,142 @@ except Exception as e:
 🔑**Note**: Here are some thing you have to remember 
 
 1. You can do check logs at any time if you find any trouble in execution 
-2. You can also check all of this in [research/04_training.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/03_training.ipynb) to see everything thing under one shed
+2. You can also check all of this in [research/04_training.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/04_training.ipynb) to see everything thing under one shed
 
 ✅ **Model Training Stage Completed** Finally the model training is done now w'll go ahead with model evaluation part
+
+### 7. Model Evaluation 
+Model Evaluation is also a very important part of any machine learning project Here we'll be able to see how our model is performing and does everything is working as expected or not
+
+**Here Also w'll follow same Workflow** 
+
+IN model Evaluation we don't have to update any yaml file we can start with updating the entity directly
+
+#### 7.1 Update the entity/config_entity.py
+similar to above create new entity that will satisfy the requirement of evaluation classes
+
+```
+@dataclass(frozen=True)
+class EvaluationConfig: 
+    path_of_model: Path
+    training_data: Path
+    all_params: dict
+    params_image_size: list
+    params_batch_size: int
+```
+
+#### 7.2 Update the Configuration manager
+Updating the Configuration manager to load imformation from yaml files to entity
+
+```
+def get_validation_config(self) -> EvaluationConfig: 
+        eval_config = EvaluationConfig(
+            path_of_model=Path("artifacts/training/model.h5"), 
+            training_data=Path("artifacts/data_ingestion/Chicken-fecal-images"), 
+            all_params=self.params, 
+            params_image_size=self.params.IMAGE_SIZE,
+            params_batch_size=self.params.BATCH_SIZE
+        )
+
+        return eval_config
+```
+
+#### 7.3 Create new Component (Evaluation)
+
+In there component w'll write methods to Evalute our model and save the results of that model as the `JSON` file
+
+🔑**Note**: This class also uses the ImageDataGenerator to rescale and load data from directories as above.
+
+```
+class Evaluation: 
+    def __init__(self, config: EvaluationConfig):
+        self.config = config
+    
+    def _valid_generator(self): 
+        datagenerator_kwargs = dict(
+            rescale = 1./255,
+            validation_split = 0.30
+        )
+
+        dataflow_kwargs = dict(
+            target_size = self.config.params_image_size[:-1], 
+            batch_size = self.config.params_batch_size, 
+            interpolation = "bilinear"
+        )
+
+        valid_datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+            **datagenerator_kwargs
+        )
+
+        self.valid_generator = valid_datagen.flow_from_directory(
+            directory=self.config.training_data, 
+            subset="validation",
+            shuffle=False, 
+            **dataflow_kwargs
+        )
+
+    @staticmethod
+    def load_model(path: Path) -> tf.keras.Model: 
+        return tf.keras.models.load_model(path)
+    
+    def evaluation(self): 
+        model = self.load_model(self.config.path_of_model)
+        self._valid_generator()
+        self.score = model.evaluate(self.valid_generator)
+
+    def save_score(self): 
+        scores = {"loss": self.score[0], "accuracy": self.score[1]}
+        save_json(path = Path("scores.json"), data = scores)
+```
+
+#### 7.4 Create new pipeline
+Now we have create new pipeline to Run above components with data
+
+```
+STAGE_NAME = "Evaluation Stage"
+
+class EvaluationPipeline: 
+    def __init__(self):
+        pass
+
+    def main(self): 
+        config = ConfigurationManager()
+        val_config = config.get_validation_config()
+        evaluation = Evaluation(val_config)
+        evaluation.evaluation()
+        evaluation.save_score()
+
+if __name__ == "__main__":
+    try: 
+        logger.info(f"******************")
+        logger.info(f">>>>> {STAGE_NAME} started <<<<<")
+        obj = EvaluationPipeline()
+        obj.main()
+        logger.info(f">>>>>>>>>> {STAGE_NAME} completed <<<<<<<<<<\n\nX=====================X")
+
+    except Exception as e:
+        logger.exception(f"Exception occured in {STAGE_NAME} : {e}")
+        raise e
+```
+
+#### 7.5 Updating the main.py 
+Finally update the main.py to see the effect the result on validation set using try except block
+
+```
+STAGE_NAME = "Evaluation Stage"
+try: 
+    logger.info(f"******************")
+    logger.info(f">>>>> {STAGE_NAME} started <<<<<")
+    obj = EvaluationPipeline()
+    obj.main()
+    logger.info(f">>>>>>>>>> {STAGE_NAME} completed <<<<<<<<<<\n\nX=====================X")
+
+except Exception as e:
+    logger.exception(f"Exception occured in {STAGE_NAME} : {e}")
+    raise e
+```
+
+✅ **Booommm!! Model Evaluation is Completed**
+Do Check out [research/05_model_evaluation.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/05_model_evaluation.ipynb)
+
+## `With that our Training Pipeline is also Completed`
