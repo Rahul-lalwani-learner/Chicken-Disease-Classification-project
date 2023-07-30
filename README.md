@@ -1326,4 +1326,6 @@ you can also see the dependencies of Pipelines through `dvc dag` and it is a ver
                   +------------+
 ```
 
-✅**DVC pipeline tracking completed** Now you can push your code 
+✅**DVC pipeline tracking completed** Now you can push your code
+
+### Prediction Pipeline
