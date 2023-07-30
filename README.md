@@ -776,3 +776,92 @@ except Exception as e:
 ```
 
 ✅ **Preparing Base Model Completed**
+
+### 5. Prepare Callbacks 
+
+Procedure for this also going to be same Here we will create till components since Callbacks standalone can't perform in pipeline so they will be helping us while training the model. 
+
+Same workflow
+#### 5.1 Update Config.yaml
+Insert new paths and location for Checkpoint_log_dir and tensorboard_log_dir
+
+```
+prepare_callbacks:
+  root_dir: artifacts/prepare_callbacks
+  tensorboard_root_log_dir: artifacts/prepare_callbacks/tensorboard_log_dir
+  checkpoint_model_filepath: artifacts/prepare_callbacks/checkpoint_dir/model.h5
+```
+
+#### 5.2 Update Entity (Create new entity for PrepareCallbackconfig)
+
+No need to update params since that will only be used will using model and training it
+
+Create new entity which follow same format as Config.yaml > prepare_callbacks
+
+```
+@dataclass(frozen=True)
+class PrepareCallbacksConfig:
+    root_dir: Path
+    tensorboard_root_log_dir: Path
+    checkpoint_model_filepath: Path
+```
+
+#### 5.3 Update Configuration manager
+Now you again have to update the Configuration manger that will help us read the data from Config.yaml and return that as the ConfigBox format that we can again use it in Components
+
+```
+def get_prepare_callback_config(self) -> PrepareCallbacksConfig:
+        config = self.config.prepare_callbacks
+        model_ckpt_dir = os.path.dirname(config.checkpoint_model_filepath)
+        create_directories([
+            Path(model_ckpt_dir),
+            Path(config.tensorboard_root_log_dir)
+        ])
+
+        prepare_callback_config = PrepareCallbacksConfig(
+            root_dir=Path(config.root_dir),
+            tensorboard_root_log_dir=Path(config.tensorboard_root_log_dir),
+            checkpoint_model_filepath=Path(config.checkpoint_model_filepath)
+        )
+
+        return prepare_callback_config
+```
+
+#### 5.4 Create new Components
+Here we have to create new Component as prepareCallback where we will Create checkpoints and tensorboard that will be returning as the list that we can use will fitting the model 
+
+```
+class PrepareCallback:
+    def __init__(self, config: PrepareCallbacksConfig):
+        self.config = config
+
+
+    
+    @property
+    def _create_tb_callbacks(self):
+        timestamp = time.strftime("%Y-%m-%d-%H-%M-%S")
+        tb_running_log_dir = os.path.join(
+            self.config.tensorboard_root_log_dir,
+            f"tb_logs_at_{timestamp}",
+        )
+        return tf.keras.callbacks.TensorBoard(log_dir=tb_running_log_dir)
+    
+
+    @property
+    def _create_ckpt_callbacks(self):
+        return tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(self.config.checkpoint_model_filepath),
+            save_best_only=True
+        )
+
+
+    def get_tb_ckpt_callbacks(self):
+        return [
+            self._create_tb_callbacks,
+            self._create_ckpt_callbacks
+        ]
+```
+
+🔑**Till here Prepare Model callbacks is Completed**
+You can check all this in [research/03_prepare_callbacks.ipynb](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/research/03_prepare_callbacks.ipynb) To check whether how this all is going to create new directory in artifacts folder
+
