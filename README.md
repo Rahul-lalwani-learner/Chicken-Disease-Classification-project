@@ -1329,3 +1329,95 @@ you can also see the dependencies of Pipelines through `dvc dag` and it is a ver
 ✅**DVC pipeline tracking completed** Now you can push your code
 
 ### Prediction Pipeline
+So, prediction pipeline is very important part of any project here we will produce prediction on Custom ImageData
+
+You can also break it down in steps 
+#### 1. Creating new prediction pipeline
+
+Create new pipeline to predict on Custom data this pipeline will do most of the prediction part (model loading , model prediction)
+
+```
+import numpy as np
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
+import os
+
+class PredictPipeline:
+    def __init__(self, filename): 
+        self.filename = filename 
+
+    def predict(self): 
+        # load model 
+        model = load_model(os.path.join("artifacts", "training", "model.h5"))
+
+        imagename = self.filename
+        test_image = image.load_img(imagename, target_size = (224, 224))
+        test_image = image.img_to_array(test_image)
+        test_image = np.expand_dims(test_image, axis = 0)
+        result = np.argmax(model.predict(test_image), axis=1)
+        print(result)
+
+        if result[0] == 1: 
+            prediction = "Healthy"
+            return [prediction]
+        else: 
+            prediction = "Coccidiosis"
+            return [prediction]
+
+    
+```
+
+#### 2. User app integration 
+This is the last part of the project here we will create our final flask application on `app.py` and connecting it with prediction pipeline and `index.html` 
+
+I am assuming you are familiar with Flask so i am most focusing on that part If you want you can checkout the code
+```
+from flask import Flask, render_template, request, redirect, jsonify
+import os
+from flask_cors import CORS, cross_origin
+from cnnClassifier.utils.common import decodeImage
+from cnnClassifier.pipeline.predict import PredictPipeline
+
+os.putenv("LANG", "en_US.UTF-8")
+os.putenv("LC_ALL", "en_US.UTF-8")
+
+app = Flask(__name__)
+CORS(app)
+
+class ClientApp: 
+    def __init__(self): 
+        self.filename = "inputImage.jpg"
+        self.classifier = PredictPipeline(self.filename)
+
+    
+@app.route("/", methods = ["GET"])
+@cross_origin()
+def home(): 
+    return render_template("index.html")
+
+@app.route("/train", methods = ["POST", "GET"])
+@cross_origin()
+def trainRoute(): 
+    os.system("dvc repro")
+    return "Training done Successfully"
+
+
+@app.route("/predict", methods = ["POST", "GET"])
+@cross_origin()
+def predictRoute():
+    image = request.json["image"]
+    decodeImage(image, App.filename)
+    result = App.classifier.predict()
+    return jsonify(result)
+
+if __name__ == "__main__": 
+    App = ClientApp()
+    app.run(host="0.0.0.0", port=5000, debug=True)
+```
+Do checkout template code (This is general templated taken from bootstrap and with some custom code integration) [index.html](https://github.com/Rahul-lalwani-learner/Chicken-Disease-Classification-project/blob/main/templates/index.html)
+
+The final app will run on local host 127.0.0.1:5000 port on you local pc
+
+😁**Woow!! We have come a long way** 
+
+✅**Project Completed**
